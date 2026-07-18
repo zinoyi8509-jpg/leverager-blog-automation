@@ -52,5 +52,5 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
           REPO: ${{ github.repository }}
-          RUN_NUM: ${{ github.run_number }}
+          RUN_NUM: ${{ github.run_id }}
         run: python scripts/post_notion_summary.py
