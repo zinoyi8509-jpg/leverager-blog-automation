@@ -1,0 +1,53 @@
+name: Weekly 윤팀장 Report
+
+on:
+  schedule:
+    # 매주 월요일 KST 09:00 = 일요일 UTC 00:00
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  weekly-reports:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Generate PDFs for all companies
+        run: python scripts/weekly_reports.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+
+      - name: Upload PDFs to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: weekly-${{ github.run_number }}
+          name: 주간 윤팀장 보고서 ${{ github.run_number }}
+          files: reports/*.pdf
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post Notion summary page
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+          REPO: ${{ github.repository }}
+          RUN_NUM: ${{ github.run_number }}
+        run: python scripts/post_notion_summary.py
