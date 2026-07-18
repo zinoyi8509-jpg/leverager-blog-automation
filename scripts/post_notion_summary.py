@@ -43,17 +43,17 @@ today = datetime.date.today()
 title = f"주간 윤팀장 보고서 · {today.isoformat()}"
 
 CLIENTS = [
-    ("카우퍼", "카우퍼_윤팀장_운영보고서"),
-    ("마실", "마실_윤팀장_운영보고서"),
-    ("건테리어", "건테리어_윤팀장_운영보고서"),
-    ("건테리어스", "건테리어스_윤팀장_운영보고서"),
-    ("건테리어주택", "건테리어주택_윤팀장_운영보고서"),
-    ("메카", "메카_윤팀장_운영보고서"),
-    ("다원세무회계", "다원세무회계_윤팀장_운영보고서"),
-    ("서휘건설", "서휘건설_윤팀장_운영보고서"),
-    ("신공간디자인", "신공간디자인_윤팀장_운영보고서"),
-    ("레솔", "레솔_윤팀장_운영보고서"),
-    ("꼼꼼", "꼼꼼_윤팀장_운영보고서"),
+    ("카우퍼", "cowper_weekly_report"),
+    ("마실", "masil_weekly_report"),
+    ("건테리어", "gunterior_weekly_report"),
+    ("건테리어스", "gunteriors_weekly_report"),
+    ("건테리어주택", "gunterior_house_weekly_report"),
+    ("메카", "mecca_weekly_report"),
+    ("다원세무회계", "dawon_weekly_report"),
+    ("서휘건설", "seohwi_weekly_report"),
+    ("신공간디자인", "shingonggan_weekly_report"),
+    ("레솔", "leso_weekly_report"),
+    ("꼼꼼", "kkomkkom_weekly_report"),
 ]
 
 report_dir = Path(__file__).resolve().parent.parent / "reports"
