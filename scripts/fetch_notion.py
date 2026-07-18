@@ -10,10 +10,11 @@ import os, sys, json, datetime, re
 from pathlib import Path
 import urllib.request
 
-TOKEN = os.environ.get("NOTION_TOKEN")
+TOKEN = (os.environ.get("NOTION_TOKEN") or "").strip()
 if not TOKEN:
     print("❌ NOTION_TOKEN 환경 변수 필요")
     sys.exit(1)
+print(f"🔑 토큰 로드 완료 (길이 {len(TOKEN)}, 시작 {TOKEN[:7]}...)")
 
 ROOT = Path(__file__).resolve().parent.parent
 HIST = ROOT / "data" / "history.json"
