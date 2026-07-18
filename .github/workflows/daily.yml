@@ -1,0 +1,51 @@
+name: Daily Blog Automation
+
+on:
+  schedule:
+    # 매일 KST 저녁 7시 = UTC 오전 10시
+    - cron: '0 10 * * *'
+  # 수동 실행도 가능
+  workflow_dispatch:
+
+jobs:
+  automate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # history.json commit push 위해 필요
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Fetch Notion yesterday's data
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python scripts/fetch_notion.py
+
+      - name: Measure keyword ranks
+        run: python scripts/measure_ranks.py
+
+      - name: Generate reports
+        run: python scripts/generate_reports.py
+
+      - name: Commit updated data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/history.json data/reports/ || true
+          git diff --staged --quiet || git commit -m "auto: $(date +%Y-%m-%d) 데이터 갱신"
+          git push
