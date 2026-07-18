@@ -21,7 +21,7 @@ for client in CLIENTS:
             cwd=ROOT, capture_output=True, text=True, timeout=300,
         )
         if r.returncode != 0:
-            print(f"  ⚠ 실패: {r.stderr[-500:]}")
+            print(f"  ⚠ 실패:\n  stdout: {r.stdout[-300:]}\n  stderr: {r.stderr[-500:]}")
             continue
         # PDF 는 internal_report 가 자체 경로에 저장. 찾아서 reports/ 로 복사
         for pdf in ROOT.glob("**/reports/internal/*_윤팀장_운영보고서_*.pdf"):
