@@ -42,8 +42,8 @@ jobs:
       - name: Upload PDFs to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: weekly-${{ github.run_number }}
-          name: 주간 윤팀장 보고서 ${{ github.run_number }}
+          tag_name: weekly-${{ github.run_id }}
+          name: 주간 윤팀장 보고서 ${{ github.run_id }}
           files: reports/*.pdf
           token: ${{ secrets.GITHUB_TOKEN }}
 
