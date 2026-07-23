@@ -82,7 +82,7 @@ def file_block(upload_id, caption):
     }
 
 
-DB_TITLE = "주간 윤팀장 보고서 아카이브"
+DB_TITLE = "포스팅 주간 보고서"  # 사용자가 만든 DB 이름 (앞뒤 공백 무시 매칭)
 
 
 def get_data_source_id(database_id):
@@ -100,7 +100,9 @@ def get_data_source_id(database_id):
 
 
 def get_data_source_schema(data_source_id):
-    """data_source의 properties 스키마 조회 → {title_key, date_key, status_key}."""
+    """data_source의 properties 스키마 조회 → title/date/status 자동 감지.
+    status는 select 또는 status 타입 모두 지원. 반환: (title_key, date_key, status_info)
+    status_info: (key, type, first_option_name) or None"""
     req = urllib.request.Request(
         f"https://api.notion.com/v1/data_sources/{data_source_id}",
         headers=NOTION_HEADERS,
@@ -110,19 +112,27 @@ def get_data_source_schema(data_source_id):
     props = resp.get("properties") or {}
     title_key = next((k for k, v in props.items() if v.get("type") == "title"), None)
     date_key = next((k for k, v in props.items() if v.get("type") == "date"), None)
-    # 진행상태 select 프로퍼티 감지 (이름이 "진행상태" 또는 유사)
-    status_key = None
+
+    status_info = None
     for k, v in props.items():
-        if v.get("type") == "select" and ("진행" in k or "상태" in k or k.lower() == "status"):
-            status_key = k
-            break
-    return title_key, date_key, status_key
+        t = v.get("type")
+        if t not in ("select", "status"): continue
+        if not ("진행" in k or "상태" in k or k.lower() == "status"): continue
+        opts = (v.get(t) or {}).get("options") or []
+        # "확인 전"이 있으면 그것, 아니면 첫 번째 옵션
+        preferred = next((o["name"] for o in opts if "확인 전" in o["name"] or "미확인" in o["name"] or "전" == o["name"]), None)
+        first_opt = preferred or (opts[0]["name"] if opts else None)
+        if first_opt:
+            status_info = (k, t, first_opt)
+        break
+    return title_key, date_key, status_info
 
 
 def find_or_create_database():
-    """부모 페이지 아래 첫 데이터베이스 재사용 (이름 무관), 없으면 생성.
-    → data_source_id 반환. 사용자가 DB 이름을 자유롭게 바꿔도 안전."""
+    """부모 페이지 아래에서 DB_TITLE 일치하는 DB 찾기 (앞뒤 공백 무시).
+    없으면 아무 DB나 첫 것 재사용, 그것도 없으면 새로 생성. → data_source_id 반환."""
     cursor = None
+    all_dbs = []  # (title, id)
     while True:
         path = f"blocks/{PARENT}/children?page_size=100"
         if cursor:
@@ -136,13 +146,24 @@ def find_or_create_database():
         for b in resp.get("results", []):
             if b.get("type") == "child_database":
                 title = (b.get("child_database") or {}).get("title") or "(무제)"
-                print(f"  📚 기존 DB 재사용: {title} · {b['id']}")
-                return get_data_source_id(b["id"])
+                all_dbs.append((title, b["id"]))
         if not resp.get("has_more"):
             break
         cursor = resp.get("next_cursor")
 
-    # 없으면 새로 생성 (인라인 DB)
+    # 1) 이름 일치(공백 무시) 우선
+    for title, bid in all_dbs:
+        if title.strip() == DB_TITLE.strip():
+            print(f"  📚 이름 매칭 DB 재사용: {title!r} · {bid}")
+            return get_data_source_id(bid)
+
+    # 2) 이름 안 맞아도 첫 DB fallback
+    if all_dbs:
+        title, bid = all_dbs[0]
+        print(f"  📚 첫 DB fallback: {title!r} · {bid}")
+        return get_data_source_id(bid)
+
+    # 3) DB 아예 없으면 새로 생성
     print("  🆕 데이터베이스 신규 생성")
     db = notion("databases", {
         "parent": {"type": "page_id", "page_id": PARENT},
@@ -203,17 +224,18 @@ for name, prefix in CLIENTS:
     except Exception as ex:
         print(f"  ❌ {name} 실패: {ex}")
 
-# 3) 실제 스키마 조회 → title/date/status 프로퍼티 이름 자동 감지
-title_key, date_key, status_key = get_data_source_schema(data_source_id)
-print(f"  📋 스키마: title={title_key!r}, date={date_key!r}, status={status_key!r}")
+# 3) 실제 스키마 조회 → title/date/status 프로퍼티 이름 자동 감지 (select/status 둘 다 지원)
+title_key, date_key, status_info = get_data_source_schema(data_source_id)
+print(f"  📋 스키마: title={title_key!r}, date={date_key!r}, status={status_info!r}")
 
 page_props = {}
 if title_key:
     page_props[title_key] = {"title": rt(title)}
 if date_key:
     page_props[date_key] = {"date": {"start": today.isoformat()}}
-if status_key:
-    page_props[status_key] = {"select": {"name": "확인 전"}}
+if status_info:
+    sk, stype, sname = status_info
+    page_props[sk] = {stype: {"name": sname}}
 
 # 4) DB에 페이지 생성
 resp = notion("pages", {
