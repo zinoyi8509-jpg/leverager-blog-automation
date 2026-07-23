@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""노션에 주간 윤팀장 보고서 페이지 생성 + PDF 파일 직접 첨부.
-유림 페이지(Claude Automation 접근 가능) 아래에 "주간 윤팀장 보고서 YYYY-MM-DD" 페이지 생성.
+"""노션 데이터베이스에 주간 윤팀장 보고서 항목 추가 + PDF 파일 직접 첨부.
+부모 페이지 아래 인라인 데이터베이스 자동 생성/재사용 → 최신순 정렬 유지.
 """
 import os, sys, json, datetime, mimetypes
-import urllib.request
+import urllib.request, urllib.error
 from pathlib import Path
 
 TOKEN = (os.environ.get("NOTION_TOKEN") or "").strip()
@@ -17,11 +17,13 @@ NOTION_HEADERS = {
     "Notion-Version": "2025-09-03",
 }
 
-def notion(path, body):
+def notion(path, body=None, method="POST"):
+    data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         f"https://api.notion.com/v1/{path}",
-        data=json.dumps(body).encode(),
+        data=data,
         headers={**NOTION_HEADERS, "Content-Type": "application/json"},
+        method=method,
     )
     return json.loads(urllib.request.urlopen(req).read())
 
@@ -38,14 +40,11 @@ def heading(text, level=2):
 
 def upload_file(pdf_path: Path):
     """Notion File Upload API로 파일 업로드 → upload_id 반환."""
-    # 1) 초기화
     init = notion("file_uploads", {
         "filename": pdf_path.name,
         "content_type": "application/pdf",
     })
     upload_id = init["id"]
-
-    # 2) 파일 데이터 전송 (multipart/form-data)
     boundary = "----NotionBoundary" + upload_id[:8]
     data = pdf_path.read_bytes()
     body = (
@@ -78,6 +77,47 @@ def file_block(upload_id, caption):
     }
 
 
+DB_TITLE = "주간 윤팀장 보고서 아카이브"
+
+
+def find_or_create_database():
+    """부모 페이지 아래에서 DB_TITLE 데이터베이스 찾기, 없으면 생성."""
+    # 부모 페이지의 children 조회
+    cursor = None
+    while True:
+        path = f"blocks/{PARENT}/children?page_size=100"
+        if cursor:
+            path += f"&start_cursor={cursor}"
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/{path}",
+            headers=NOTION_HEADERS,
+            method="GET",
+        )
+        resp = json.loads(urllib.request.urlopen(req).read())
+        for b in resp.get("results", []):
+            if b.get("type") == "child_database":
+                title = (b.get("child_database") or {}).get("title") or ""
+                if title == DB_TITLE:
+                    print(f"  📚 기존 DB 재사용: {b['id']}")
+                    return b["id"]
+        if not resp.get("has_more"):
+            break
+        cursor = resp.get("next_cursor")
+
+    # 없으면 새로 생성 (인라인 DB)
+    print("  🆕 데이터베이스 신규 생성")
+    db = notion("databases", {
+        "parent": {"type": "page_id", "page_id": PARENT},
+        "is_inline": True,
+        "title": rt(DB_TITLE),
+        "properties": {
+            "제목": {"title": {}},
+            "보고 날짜": {"date": {}},
+        },
+    })
+    return db["id"]
+
+
 CLIENTS = [
     ("카우퍼", "cowper_weekly_report"),
     ("마실", "masil_weekly_report"),
@@ -101,7 +141,10 @@ def find_pdf(pattern):
         if pattern in p.name: return p
     return None
 
-# 각 회사 PDF 업로드 + 파일 블록 만들기
+# 1) DB 확보
+db_id = find_or_create_database()
+
+# 2) 각 회사 PDF 업로드 + 파일 블록 만들기
 children = [
     paragraph(f"자동 생성: {today.isoformat()}"),
     heading("📄 회사별 윤팀장 보고서", 2),
@@ -119,10 +162,13 @@ for name, prefix in CLIENTS:
     except Exception as ex:
         print(f"  ❌ {name} 실패: {ex}")
 
-# 노션 페이지 생성
+# 3) DB에 페이지 생성 (제목 + 날짜 속성)
 resp = notion("pages", {
-    "parent": {"type": "page_id", "page_id": PARENT},
-    "properties": {"title": {"title": rt(title)}},
+    "parent": {"type": "database_id", "database_id": db_id},
+    "properties": {
+        "제목": {"title": rt(title)},
+        "보고 날짜": {"date": {"start": today.isoformat()}},
+    },
     "children": children,
 })
 print(f"\n✅ 노션 페이지 생성: {resp.get('url')}")
