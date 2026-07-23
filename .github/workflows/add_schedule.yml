@@ -1,0 +1,14 @@
+name: Add Weekly Schedule Toggle (원샷)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add schedule toggle to Notion page
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python3 scripts/add_weekly_schedule.py
