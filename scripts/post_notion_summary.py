@@ -25,7 +25,12 @@ def notion(path, body=None, method="POST"):
         headers={**NOTION_HEADERS, "Content-Type": "application/json"},
         method=method,
     )
-    return json.loads(urllib.request.urlopen(req).read())
+    try:
+        return json.loads(urllib.request.urlopen(req).read())
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        print(f"❌ Notion API {e.code}: {err_body[:600]}")
+        raise
 
 def rt(text, bold=False):
     return [{"type": "text", "text": {"content": text}, "annotations": {"bold": bold}}]
@@ -80,9 +85,22 @@ def file_block(upload_id, caption):
 DB_TITLE = "주간 윤팀장 보고서 아카이브"
 
 
+def get_data_source_id(database_id):
+    """DB id → 첫 번째 data_source_id (2025-09-03 API)."""
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/databases/{database_id}",
+        headers=NOTION_HEADERS,
+        method="GET",
+    )
+    resp = json.loads(urllib.request.urlopen(req).read())
+    sources = resp.get("data_sources") or []
+    if not sources:
+        raise RuntimeError(f"DB {database_id} 에 data_sources 없음")
+    return sources[0]["id"]
+
+
 def find_or_create_database():
-    """부모 페이지 아래에서 DB_TITLE 데이터베이스 찾기, 없으면 생성."""
-    # 부모 페이지의 children 조회
+    """부모 페이지 아래에서 DB_TITLE 데이터베이스 찾기, 없으면 생성 → data_source_id 반환."""
     cursor = None
     while True:
         path = f"blocks/{PARENT}/children?page_size=100"
@@ -99,7 +117,7 @@ def find_or_create_database():
                 title = (b.get("child_database") or {}).get("title") or ""
                 if title == DB_TITLE:
                     print(f"  📚 기존 DB 재사용: {b['id']}")
-                    return b["id"]
+                    return get_data_source_id(b["id"])
         if not resp.get("has_more"):
             break
         cursor = resp.get("next_cursor")
@@ -115,7 +133,11 @@ def find_or_create_database():
             "보고 날짜": {"date": {}},
         },
     })
-    return db["id"]
+    # 생성 응답에서 바로 data_sources 확인
+    sources = db.get("data_sources") or []
+    if sources:
+        return sources[0]["id"]
+    return get_data_source_id(db["id"])
 
 
 CLIENTS = [
@@ -141,8 +163,8 @@ def find_pdf(pattern):
         if pattern in p.name: return p
     return None
 
-# 1) DB 확보
-db_id = find_or_create_database()
+# 1) DB 확보 (data_source_id 반환)
+data_source_id = find_or_create_database()
 
 # 2) 각 회사 PDF 업로드 + 파일 블록 만들기
 children = [
@@ -162,9 +184,9 @@ for name, prefix in CLIENTS:
     except Exception as ex:
         print(f"  ❌ {name} 실패: {ex}")
 
-# 3) DB에 페이지 생성 (제목 + 날짜 속성)
+# 3) DB에 페이지 생성 (2025-09-03 API: data_source_id)
 resp = notion("pages", {
-    "parent": {"type": "database_id", "database_id": db_id},
+    "parent": {"type": "data_source_id", "data_source_id": data_source_id},
     "properties": {
         "제목": {"title": rt(title)},
         "보고 날짜": {"date": {"start": today.isoformat()}},
