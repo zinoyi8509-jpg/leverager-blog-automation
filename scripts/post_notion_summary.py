@@ -99,6 +99,20 @@ def get_data_source_id(database_id):
     return sources[0]["id"]
 
 
+def get_data_source_schema(data_source_id):
+    """data_source의 properties 스키마 조회 → {title_key, date_key}."""
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/data_sources/{data_source_id}",
+        headers=NOTION_HEADERS,
+        method="GET",
+    )
+    resp = json.loads(urllib.request.urlopen(req).read())
+    props = resp.get("properties") or {}
+    title_key = next((k for k, v in props.items() if v.get("type") == "title"), None)
+    date_key = next((k for k, v in props.items() if v.get("type") == "date"), None)
+    return title_key, date_key
+
+
 def find_or_create_database():
     """부모 페이지 아래에서 DB_TITLE 데이터베이스 찾기, 없으면 생성 → data_source_id 반환."""
     cursor = None
@@ -184,13 +198,20 @@ for name, prefix in CLIENTS:
     except Exception as ex:
         print(f"  ❌ {name} 실패: {ex}")
 
-# 3) DB에 페이지 생성 (2025-09-03 API: data_source_id)
+# 3) 실제 스키마 조회 → title/date 프로퍼티 이름 자동 감지
+title_key, date_key = get_data_source_schema(data_source_id)
+print(f"  📋 스키마: title={title_key!r}, date={date_key!r}")
+
+page_props = {}
+if title_key:
+    page_props[title_key] = {"title": rt(title)}
+if date_key:
+    page_props[date_key] = {"date": {"start": today.isoformat()}}
+
+# 4) DB에 페이지 생성
 resp = notion("pages", {
     "parent": {"type": "data_source_id", "data_source_id": data_source_id},
-    "properties": {
-        "제목": {"title": rt(title)},
-        "보고 날짜": {"date": {"start": today.isoformat()}},
-    },
+    "properties": page_props,
     "children": children,
 })
 print(f"\n✅ 노션 페이지 생성: {resp.get('url')}")
