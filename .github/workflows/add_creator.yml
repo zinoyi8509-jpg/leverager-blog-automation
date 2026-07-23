@@ -1,0 +1,14 @@
+name: Add Creator Property (원샷)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-creator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add 작성자 property
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python3 scripts/add_creator_property.py
