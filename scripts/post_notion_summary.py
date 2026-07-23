@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 
 TOKEN = (os.environ.get("NOTION_TOKEN") or "").strip()
-PARENT = "28c61e2336fd805b9a4bdf45a9b52a9f"
+PARENT = "3a661e2336fd8041abdac15972e10e14"  # 주간 보고서 (레버리저 팀)
 
 if not TOKEN:
     print("❌ NOTION_TOKEN 필요"); sys.exit(1)
