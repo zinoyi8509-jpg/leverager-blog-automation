@@ -114,7 +114,8 @@ def get_data_source_schema(data_source_id):
 
 
 def find_or_create_database():
-    """부모 페이지 아래에서 DB_TITLE 데이터베이스 찾기, 없으면 생성 → data_source_id 반환."""
+    """부모 페이지 아래 첫 데이터베이스 재사용 (이름 무관), 없으면 생성.
+    → data_source_id 반환. 사용자가 DB 이름을 자유롭게 바꿔도 안전."""
     cursor = None
     while True:
         path = f"blocks/{PARENT}/children?page_size=100"
@@ -128,10 +129,9 @@ def find_or_create_database():
         resp = json.loads(urllib.request.urlopen(req).read())
         for b in resp.get("results", []):
             if b.get("type") == "child_database":
-                title = (b.get("child_database") or {}).get("title") or ""
-                if title == DB_TITLE:
-                    print(f"  📚 기존 DB 재사용: {b['id']}")
-                    return get_data_source_id(b["id"])
+                title = (b.get("child_database") or {}).get("title") or "(무제)"
+                print(f"  📚 기존 DB 재사용: {title} · {b['id']}")
+                return get_data_source_id(b["id"])
         if not resp.get("has_more"):
             break
         cursor = resp.get("next_cursor")
@@ -147,7 +147,6 @@ def find_or_create_database():
             "보고 날짜": {"date": {}},
         },
     })
-    # 생성 응답에서 바로 data_sources 확인
     sources = db.get("data_sources") or []
     if sources:
         return sources[0]["id"]
