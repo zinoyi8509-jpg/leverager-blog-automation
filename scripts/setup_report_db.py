@@ -72,7 +72,7 @@ else:
     }, method="PATCH")
     date_key = NEW_DATE_KEY
 
-# 5) status 속성 확인 + 옵션 확인
+# 5) status 속성 확인 + 없으면 select 타입으로 추가
 status_key = None
 status_type = None
 status_option = None
@@ -85,14 +85,28 @@ for pk, pv in props.items():
         print(f"✅ {t} 속성 '{pk}' 옵션:")
         for o in opts:
             print(f"    - {o['name']} ({o.get('color', '')})")
-        # "확인 전" 우선, 없으면 첫 옵션
         pref = next((o["name"] for o in opts if "확인 전" in o["name"] or o["name"].strip() == "전"), None)
         status_option = pref or (opts[0]["name"] if opts else None)
         print(f"→ 세팅할 옵션: {status_option!r}")
         break
 
 if not status_key:
-    print("⚠ status/select 속성 없음 — 상태 세팅 스킵")
+    print("🆕 '상태' select 속성 신규 추가 (확인 전 / 확인완료)")
+    api(f"data_sources/{ds_id}", {
+        "properties": {
+            "상태": {
+                "select": {
+                    "options": [
+                        {"name": "확인 전", "color": "red"},
+                        {"name": "확인완료", "color": "green"},
+                    ]
+                }
+            }
+        }
+    }, method="PATCH")
+    status_key = "상태"
+    status_type = "select"
+    status_option = "확인 전"
 
 # 6) 기존 페이지 값 세팅
 print("\n📝 기존 페이지 값 세팅:")
