@@ -100,7 +100,7 @@ def get_data_source_id(database_id):
 
 
 def get_data_source_schema(data_source_id):
-    """data_source의 properties 스키마 조회 → {title_key, date_key}."""
+    """data_source의 properties 스키마 조회 → {title_key, date_key, status_key}."""
     req = urllib.request.Request(
         f"https://api.notion.com/v1/data_sources/{data_source_id}",
         headers=NOTION_HEADERS,
@@ -110,7 +110,13 @@ def get_data_source_schema(data_source_id):
     props = resp.get("properties") or {}
     title_key = next((k for k, v in props.items() if v.get("type") == "title"), None)
     date_key = next((k for k, v in props.items() if v.get("type") == "date"), None)
-    return title_key, date_key
+    # 진행상태 select 프로퍼티 감지 (이름이 "진행상태" 또는 유사)
+    status_key = None
+    for k, v in props.items():
+        if v.get("type") == "select" and ("진행" in k or "상태" in k or k.lower() == "status"):
+            status_key = k
+            break
+    return title_key, date_key, status_key
 
 
 def find_or_create_database():
@@ -197,15 +203,17 @@ for name, prefix in CLIENTS:
     except Exception as ex:
         print(f"  ❌ {name} 실패: {ex}")
 
-# 3) 실제 스키마 조회 → title/date 프로퍼티 이름 자동 감지
-title_key, date_key = get_data_source_schema(data_source_id)
-print(f"  📋 스키마: title={title_key!r}, date={date_key!r}")
+# 3) 실제 스키마 조회 → title/date/status 프로퍼티 이름 자동 감지
+title_key, date_key, status_key = get_data_source_schema(data_source_id)
+print(f"  📋 스키마: title={title_key!r}, date={date_key!r}, status={status_key!r}")
 
 page_props = {}
 if title_key:
     page_props[title_key] = {"title": rt(title)}
 if date_key:
     page_props[date_key] = {"date": {"start": today.isoformat()}}
+if status_key:
+    page_props[status_key] = {"select": {"name": "확인 전"}}
 
 # 4) DB에 페이지 생성
 resp = notion("pages", {

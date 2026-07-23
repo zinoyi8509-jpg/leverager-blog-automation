@@ -1,0 +1,14 @@
+name: Add Status Property (원샷)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add 진행상태 property
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python3 scripts/add_status_property.py
