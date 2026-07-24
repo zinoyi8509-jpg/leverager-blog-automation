@@ -1,0 +1,11 @@
+name: Add Sync Props (원샷)
+on:
+  workflow_dispatch:
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python3 scripts/add_sync_props.py
