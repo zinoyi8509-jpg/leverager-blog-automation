@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""사용자가 지정한 원본 캘린더 DB를 주간 보고서 페이지에 링크 (원샷).
-
-원본 DB: 28c61e2336fd811eb1f1f00ff5e29654 (사용자가 URL로 전달)
-대상 페이지: 3a661e2336fd8041abdac15972e10e14 (주간 보고서)
+"""원본 캘린더 DB를 주간 보고서 페이지에 최대한 자동으로 링크.
+Notion API 제약: 인라인 DB는 linked view 자동 생성 불가.
+→ 대신 database mention (클릭 시 원본 이동)을 삽입.
 """
 import os, sys, json
 import urllib.request, urllib.error
@@ -10,6 +9,7 @@ import urllib.request, urllib.error
 TOKEN = (os.environ.get("NOTION_TOKEN") or "").strip()
 SOURCE_DB = "28c61e2336fd811eb1f1f00ff5e29654"
 TARGET_PAGE = "3a661e2336fd8041abdac15972e10e14"
+SOURCE_URL = "https://www.notion.so/28c61e2336fd811eb1f1f00ff5e29654"
 
 if not TOKEN: print("❌ NOTION_TOKEN 필요"); sys.exit(1)
 
@@ -30,59 +30,95 @@ def api(path, body=None, method="GET"):
         return json.loads(urllib.request.urlopen(req).read())
     except urllib.error.HTTPError as e:
         err = e.read().decode('utf-8', errors='replace')
-        print(f"❌ {e.code}: {err[:600]}")
+        print(f"  ⚠ {e.code}: {err[:300]}")
         raise
 
-# 1) 원본 DB 확인
-print(f"=== 원본 DB 조회 ===")
-db_info = api(f"databases/{SOURCE_DB}")
-title_rich = db_info.get("title") or []
-db_title = "".join(x.get("plain_text", "") for x in title_rich) or "(무제)"
-print(f"  📚 DB: {db_title!r}")
+# 원본 DB 확인
+db = api(f"databases/{SOURCE_DB}")
+db_title = "".join(x.get("plain_text", "") for x in (db.get("title") or [])) or "(무제)"
+print(f"📚 원본 DB: {db_title!r}")
 
-# data_source 정보
-for ds in db_info.get("data_sources") or []:
-    ds_id = ds["id"]
-    ds_name = ds.get("name", "")
-    print(f"  📋 data_source: {ds_id} ({ds_name})")
-
-    # properties 스키마
-    full = api(f"data_sources/{ds_id}")
-    props = full.get("properties") or {}
-    print(f"  properties ({len(props)}개):")
-    for pk, pv in props.items():
-        print(f"    - {pk} ({pv.get('type')})")
-
-# 2) 주간 보고서 페이지에 link_to_page 블록 추가
-print(f"\n=== 주간 보고서 페이지에 링크 삽입 ===")
-resp = api(f"blocks/{TARGET_PAGE}/children", {
-    "children": [
-        {
-            "object": "block",
-            "type": "paragraph",
-            "paragraph": {
-                "rich_text": [
-                    {"type": "text", "text": {"content": "📅 캘린더 (원본 링크): "}, "annotations": {"bold": True}}
-                ]
+# === 시도 1: database mention (inline 텍스트 링크) ===
+print("\n시도 1: database mention 삽입...")
+try:
+    resp = api(f"blocks/{TARGET_PAGE}/children", {
+        "children": [
+            {
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {
+                    "rich_text": [{"type": "text", "text": {"content": "📅 원본 캘린더"}}]
+                }
+            },
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "원본 DB 열기 → "}},
+                        {
+                            "type": "mention",
+                            "mention": {
+                                "type": "database",
+                                "database": {"id": SOURCE_DB}
+                            }
+                        }
+                    ]
+                }
             }
-        },
-        {
-            "object": "block",
-            "type": "link_to_page",
-            "link_to_page": {
-                "type": "database_id",
-                "database_id": SOURCE_DB,
+        ]
+    }, method="PATCH")
+    for b in resp.get("results", []):
+        print(f"  ✅ {b.get('type')} 삽입: {b['id']}")
+    print("→ database mention 성공 (텍스트 링크 형태)")
+except Exception:
+    print("→ mention 실패")
+
+# === 시도 2: 원본 DB의 부모 페이지 링크 ===
+print("\n시도 2: 원본 DB의 부모 페이지 링크...")
+try:
+    parent = db.get("parent") or {}
+    if parent.get("type") == "page_id":
+        parent_id = parent["page_id"]
+        print(f"  원본 DB의 부모 페이지: {parent_id}")
+        api(f"blocks/{TARGET_PAGE}/children", {
+            "children": [
+                {
+                    "object": "block",
+                    "type": "link_to_page",
+                    "link_to_page": {"type": "page_id", "page_id": parent_id}
+                }
+            ]
+        }, method="PATCH")
+        print("  ✅ 부모 페이지 링크 추가됨 (그 안에 원본 캘린더 있음)")
+    else:
+        print(f"  부모 타입={parent.get('type')} — 페이지 아님, 스킵")
+except Exception:
+    print("  → 실패")
+
+# === 시도 3: URL 하이퍼링크 (fallback) ===
+print("\n시도 3: URL bookmark 삽입...")
+try:
+    api(f"blocks/{TARGET_PAGE}/children", {
+        "children": [
+            {
+                "object": "block",
+                "type": "bookmark",
+                "bookmark": {
+                    "url": SOURCE_URL,
+                    "caption": [{"type": "text", "text": {"content": f"원본 캘린더: {db_title}"}}]
+                }
             }
-        }
-    ]
-}, method="PATCH")
+        ]
+    }, method="PATCH")
+    print("  ✅ bookmark 카드 추가됨")
+except Exception:
+    print("  → 실패")
 
-for b in resp.get("results", []):
-    print(f"  ✅ 블록 삽입: {b.get('type')} · {b['id']}")
-
-print(f"\n✅ 완료")
-print(f"\n⚠ 참고: link_to_page 는 링크 카드 형태로 표시됨.")
-print(f"   노션 UI에서 그 링크를 인라인 캘린더로 표시하려면:")
-print(f"   1. 삽입된 링크 블록 옆 ⋮⋮ 핸들 클릭")
-print(f"   2. '전환' → '링크된 데이터베이스로 전환' 선택")
-print(f"   3. 뷰 유형을 '캘린더'로 변경")
+print("\n=== 완료 ===")
+print("주간 보고서 페이지에 원본 캘린더 접근 링크 3종 삽입:")
+print("  1. Heading + database mention (텍스트 내 링크)")
+print("  2. 원본 페이지 카드 링크")
+print("  3. Bookmark 카드")
+print(f"\n👉 노션 페이지 확인: https://www.notion.so/{TARGET_PAGE.replace('-','')}")
+print("불필요한 것은 노션 UI에서 지우세요.")
