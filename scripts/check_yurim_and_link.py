@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""유림 페이지의 캘린더 DB 확인 + 주간 보고서 페이지에 링크된 뷰 삽입.
+"""사용자가 지정한 원본 캘린더 DB를 주간 보고서 페이지에 링크 (원샷).
 
-원본: 유림 페이지 (28c61e2336fd805b9a4bdf45a9b52a9f) 캘린더 DB
-대상: 주간 보고서 페이지 (3a661e2336fd8041abdac15972e10e14)
+원본 DB: 28c61e2336fd811eb1f1f00ff5e29654 (사용자가 URL로 전달)
+대상 페이지: 3a661e2336fd8041abdac15972e10e14 (주간 보고서)
 """
 import os, sys, json
 import urllib.request, urllib.error
 
 TOKEN = (os.environ.get("NOTION_TOKEN") or "").strip()
-YURIM = "28c61e2336fd805b9a4bdf45a9b52a9f"
-TARGET = "3a661e2336fd8041abdac15972e10e14"
+SOURCE_DB = "28c61e2336fd811eb1f1f00ff5e29654"
+TARGET_PAGE = "3a661e2336fd8041abdac15972e10e14"
 
 if not TOKEN: print("❌ NOTION_TOKEN 필요"); sys.exit(1)
 
@@ -30,57 +30,59 @@ def api(path, body=None, method="GET"):
         return json.loads(urllib.request.urlopen(req).read())
     except urllib.error.HTTPError as e:
         err = e.read().decode('utf-8', errors='replace')
-        print(f"❌ {e.code}: {err[:500]}")
+        print(f"❌ {e.code}: {err[:600]}")
         raise
 
-# 1) 유림 페이지 및 하위 페이지 재귀 탐색 → DB 목록
-print(f"=== 유림 페이지 트리 스캔 ===")
-dbs = []  # (title, id, path)
-def scan(block_id, path=""):
-    cursor = None
-    while True:
-        p = f"blocks/{block_id}/children?page_size=100"
-        if cursor: p += f"&start_cursor={cursor}"
-        try:
-            r = api(p)
-        except Exception as ex:
-            print(f"  ⚠ {path}: {ex}")
-            return
-        for b in r.get("results", []):
-            t = b.get("type")
-            if t == "child_database":
-                title = (b.get("child_database") or {}).get("title") or "(무제)"
-                full = f"{path}/{title}"
-                print(f"  🗄  {full} · {b['id']}")
-                dbs.append((title, b["id"], full))
-            elif t == "child_page":
-                title = (b.get("child_page") or {}).get("title") or ""
-                print(f"  📄 {path}/{title}")
-                scan(b["id"], f"{path}/{title}")
-            elif t == "toggle":
-                rich = (b.get("toggle") or {}).get("rich_text") or []
-                text = "".join(x.get("plain_text", "") for x in rich)
-                # 토글 안도 스캔
-                scan(b["id"], f"{path}/🔽{text}")
-        if not r.get("has_more"): break
-        cursor = r.get("next_cursor")
+# 1) 원본 DB 확인
+print(f"=== 원본 DB 조회 ===")
+db_info = api(f"databases/{SOURCE_DB}")
+title_rich = db_info.get("title") or []
+db_title = "".join(x.get("plain_text", "") for x in title_rich) or "(무제)"
+print(f"  📚 DB: {db_title!r}")
 
-scan(YURIM, "유림")
+# data_source 정보
+for ds in db_info.get("data_sources") or []:
+    ds_id = ds["id"]
+    ds_name = ds.get("name", "")
+    print(f"  📋 data_source: {ds_id} ({ds_name})")
 
-if not dbs:
-    print("❌ 유림 페이지 트리에 DB 없음"); sys.exit(1)
+    # properties 스키마
+    full = api(f"data_sources/{ds_id}")
+    props = full.get("properties") or {}
+    print(f"  properties ({len(props)}개):")
+    for pk, pv in props.items():
+        print(f"    - {pk} ({pv.get('type')})")
 
-# 2) 각 DB의 data_source 확인 (linked view에 필요)
-print(f"\n=== DB 상세 ===")
-for title, db_id in dbs:
-    db_info = api(f"databases/{db_id}")
-    for ds in db_info.get("data_sources") or []:
-        print(f"  DB '{title}' → data_source {ds['id']} ({ds.get('name', '')})")
+# 2) 주간 보고서 페이지에 link_to_page 블록 추가
+print(f"\n=== 주간 보고서 페이지에 링크 삽입 ===")
+resp = api(f"blocks/{TARGET_PAGE}/children", {
+    "children": [
+        {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "📅 캘린더 (원본 링크): "}, "annotations": {"bold": True}}
+                ]
+            }
+        },
+        {
+            "object": "block",
+            "type": "link_to_page",
+            "link_to_page": {
+                "type": "database_id",
+                "database_id": SOURCE_DB,
+            }
+        }
+    ]
+}, method="PATCH")
 
-# 3) 확인만 하고 링크 삽입은 스킵 (사용자 확인 후 별도 실행)
-print(f"\n=== 발견된 DB 목록 (링크 삽입은 다음 단계) ===")
-for title, db_id, path in dbs:
-    print(f"  · {title} ({path})")
-    print(f"    id={db_id}")
-print(f"\n확인 후 어떤 DB를 링크할지 결정 후 다음 단계 실행")
+for b in resp.get("results", []):
+    print(f"  ✅ 블록 삽입: {b.get('type')} · {b['id']}")
 
+print(f"\n✅ 완료")
+print(f"\n⚠ 참고: link_to_page 는 링크 카드 형태로 표시됨.")
+print(f"   노션 UI에서 그 링크를 인라인 캘린더로 표시하려면:")
+print(f"   1. 삽입된 링크 블록 옆 ⋮⋮ 핸들 클릭")
+print(f"   2. '전환' → '링크된 데이터베이스로 전환' 선택")
+print(f"   3. 뷰 유형을 '캘린더'로 변경")
