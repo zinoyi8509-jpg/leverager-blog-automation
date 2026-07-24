@@ -33,24 +33,42 @@ def api(path, body=None, method="GET"):
         print(f"❌ {e.code}: {err[:500]}")
         raise
 
-# 1) 유림 페이지의 DB들 조회
-print(f"=== 유림 페이지 하위 블록 ===")
-resp = api(f"blocks/{YURIM}/children?page_size=100")
-dbs = []
-for b in resp.get("results", []):
-    t = b.get("type")
-    if t == "child_database":
-        title = (b.get("child_database") or {}).get("title") or "(무제)"
-        print(f"  🗄  {title} · {b['id']}")
-        dbs.append((title, b["id"]))
-    elif t == "child_page":
-        title = (b.get("child_page") or {}).get("title") or ""
-        print(f"  📄 page: {title}")
-    else:
-        print(f"  ▪ {t}")
+# 1) 유림 페이지 및 하위 페이지 재귀 탐색 → DB 목록
+print(f"=== 유림 페이지 트리 스캔 ===")
+dbs = []  # (title, id, path)
+def scan(block_id, path=""):
+    cursor = None
+    while True:
+        p = f"blocks/{block_id}/children?page_size=100"
+        if cursor: p += f"&start_cursor={cursor}"
+        try:
+            r = api(p)
+        except Exception as ex:
+            print(f"  ⚠ {path}: {ex}")
+            return
+        for b in r.get("results", []):
+            t = b.get("type")
+            if t == "child_database":
+                title = (b.get("child_database") or {}).get("title") or "(무제)"
+                full = f"{path}/{title}"
+                print(f"  🗄  {full} · {b['id']}")
+                dbs.append((title, b["id"], full))
+            elif t == "child_page":
+                title = (b.get("child_page") or {}).get("title") or ""
+                print(f"  📄 {path}/{title}")
+                scan(b["id"], f"{path}/{title}")
+            elif t == "toggle":
+                rich = (b.get("toggle") or {}).get("rich_text") or []
+                text = "".join(x.get("plain_text", "") for x in rich)
+                # 토글 안도 스캔
+                scan(b["id"], f"{path}/🔽{text}")
+        if not r.get("has_more"): break
+        cursor = r.get("next_cursor")
+
+scan(YURIM, "유림")
 
 if not dbs:
-    print("❌ 유림 페이지에 DB 없음"); sys.exit(1)
+    print("❌ 유림 페이지 트리에 DB 없음"); sys.exit(1)
 
 # 2) 각 DB의 data_source 확인 (linked view에 필요)
 print(f"\n=== DB 상세 ===")
@@ -59,24 +77,10 @@ for title, db_id in dbs:
     for ds in db_info.get("data_sources") or []:
         print(f"  DB '{title}' → data_source {ds['id']} ({ds.get('name', '')})")
 
-# 3) 대상 페이지에 link_to_page 블록 추가 (Notion API로 가능한 링크 방식)
-# 각 DB마다 link_to_page 블록 삽입
-print(f"\n=== 대상 페이지에 링크 추가 ===")
-children = []
-for title, db_id in dbs:
-    children.append({
-        "object": "block",
-        "type": "link_to_page",
-        "link_to_page": {
-            "type": "database_id",
-            "database_id": db_id,
-        }
-    })
+# 3) 확인만 하고 링크 삽입은 스킵 (사용자 확인 후 별도 실행)
+print(f"\n=== 발견된 DB 목록 (링크 삽입은 다음 단계) ===")
+for title, db_id, path in dbs:
+    print(f"  · {title} ({path})")
+    print(f"    id={db_id}")
+print(f"\n확인 후 어떤 DB를 링크할지 결정 후 다음 단계 실행")
 
-resp = api(f"blocks/{TARGET}/children", {"children": children}, method="PATCH")
-for i, b in enumerate(resp.get("results", [])):
-    print(f"  ✅ 링크 삽입 완료: {dbs[i][0]} · block={b['id']}")
-
-print("\n완료. 노션에서 확인하세요.")
-print("참고: link_to_page는 페이지 링크 형태로 표시됨. 인라인 캘린더 뷰가 필요하면")
-print("      노션 UI에서 그 링크 우클릭 → '전환' → '링크된 데이터베이스로 전환' 필요할 수 있음.")
