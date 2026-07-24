@@ -5,12 +5,32 @@ import os, json, urllib.request
 TOKEN = os.environ.get("NOTION_TOKEN", "").strip()
 if not TOKEN: print("❌ NOTION_TOKEN 필요"); exit(1)
 
-DB_ID = "3a761e2336fd80fb9f9ef20b1eddfa1f"
+TARGET_ID = "3a761e2336fd80fb9f9ef20b1eddfa1f"
 H = {"Authorization": f"Bearer {TOKEN}", "Notion-Version": "2025-09-03"}
 
 def get(path):
     req = urllib.request.Request(f"https://api.notion.com/v1/{path}", headers=H, method="GET")
     return json.loads(urllib.request.urlopen(req).read())
+
+# 페이지 or DB 확인
+try:
+    p = get(f"pages/{TARGET_ID}")
+    print(f"📄 페이지: {p.get('parent')}")
+    # 페이지 안 자식 블록에서 DB 찾기
+    r = get(f"blocks/{TARGET_ID}/children?page_size=100")
+    dbs = []
+    for b in r.get("results", []):
+        if b.get("type") == "child_database":
+            t = (b.get("child_database") or {}).get("title") or "(무제)"
+            print(f"  🗄 {t} · {b['id']}")
+            dbs.append(b["id"])
+    if not dbs:
+        print("  (자식 DB 없음)")
+        exit(0)
+    DB_ID = dbs[0]
+except Exception as e:
+    print(f"페이지 조회 실패: {e}")
+    DB_ID = TARGET_ID  # 그냥 DB로 다시 시도
 
 # DB 정보
 db = get(f"databases/{DB_ID}")
