@@ -13,15 +13,15 @@
  */
 
 // ==================== 설정 ====================
-const NOTION_TOKEN = 'secret_YOUR_NOTION_INTEGRATION_TOKEN_HERE';  // Notion Integration Secret
-const NOTION_DATABASE_ID = '3a761e2336fd80fb9f9ef20b1eddfa1f';    // 대상 DB ID
-const GCAL_ID = 'primary';  // 'primary' = 기본 캘린더, 또는 xxx@group.calendar.google.com
+const NOTION_TOKEN = 'secret_YOUR_NOTION_INTEGRATION_TOKEN_HERE';  // ← Calendar Sync Integration Secret 붙여넣기
+const NOTION_DATABASE_ID = '3a761e2336fd80fb9f9ef20b1eddfa1f';    // 대상 DB ID (새 데이터베이스) ✅ 세팅됨
+const GCAL_ID = 'zinoyi8509@gmail.com';  // 이진호 캘린더 ✅ 세팅됨
 
-// 필드명 (자신의 DB에 맞게 수정)
-const FIELD_TITLE = '이름';        // title 속성 이름
-const FIELD_DATE = '날짜';         // date 속성 이름
-const FIELD_GCAL_ID = 'GCal Event ID';  // text 속성 (스크립트가 자동 관리)
-const FIELD_SYNCED = '마지막 동기화';    // date 속성 (시간 포함)
+// 필드명 (사용자 DB에 맞춰 세팅됨)
+const FIELD_TITLE = '이름';        // ✅ 있음
+const FIELD_DATE = '날짜';         // ✅ 있음
+const FIELD_GCAL_ID = 'GCal Event ID';  // ✅ 자동 추가됨
+const FIELD_SYNCED = '마지막 동기화';    // ✅ 자동 추가됨
 
 const NOTION_VERSION = '2025-09-03';
 
