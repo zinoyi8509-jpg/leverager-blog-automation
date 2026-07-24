@@ -1,0 +1,14 @@
+name: Link Calendar (원샷)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Link yurim calendar to weekly report page
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: python3 scripts/check_yurim_and_link.py
