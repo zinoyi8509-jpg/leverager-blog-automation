@@ -16,10 +16,7 @@ from collections import defaultdict
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HIST = os.path.join(ROOT, "data", "history.json")
 ODIR = os.path.join(ROOT, "reports", "internal")
-import shutil as _shutil
-CHROME = (_shutil.which("google-chrome") or _shutil.which("chromium")
-          or _shutil.which("chromium-browser")
-          or "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 e = lambda s: html.escape(str(s), quote=True)
 
 CLIENTS = {
@@ -69,7 +66,15 @@ def build(client_id, today=None):
     today = today or datetime.date.today().isoformat()
     h = json.load(open(HIST, encoding="utf-8"))
     blog = h["blogs"][nv]
-    main_kws = blog.get("keywords", {}).get("main", [])
+    main_raw = blog.get("keywords", {}).get("main", [])
+    # 새 구조 지원: {"categories": [{"name":..., "groups": [[...],[...]]}]}
+    if isinstance(main_raw, dict) and "categories" in main_raw:
+        main_categories = main_raw["categories"]
+        main_kws = [kw for cat in main_categories for grp in cat.get("groups", []) for kw in grp]
+    else:
+        # 하위호환: flat list
+        main_categories = None
+        main_kws = main_raw or []
     cur_month = today[:7]  # 2026-06
     sub_node = blog.get("keywords", {}).get("sub", {}).get(cur_month, {})
     sub_kws = sub_node.get("unique_keywords", [])
@@ -111,24 +116,17 @@ def build(client_id, today=None):
     S.append(f'<div class="k"><div class="l">다중 노출 추가 글</div><div class="v">+{multi_total}<small>건</small></div></div>')
     S.append('</div>')
 
-    # 메인 키워드 — CSS multi-column 자연 흐름 (페이지 넘어가도 좌→우 순서 유지)
-    rows = ''
-    for i, kw in enumerate(main_kws, 1):
-        it = items.get(kw, {})
-        rows += (f'<div class="mk-row"><span class="mk-no">{i}.</span> '
-                 f'<span class="mk-kw">{e(kw)}</span> '
-                 f'<span class="mk-rk">{rank_chip(it.get("rank"), it.get("extra_ranks"))}</span></div>')
-    S.append(f'<div class="sec"><h2>🎯 메인 키워드 — ({len(main_kws)}개)</h2>'
-             f'<div class="main-flow">{rows}</div></div>')
+    def is_top5(kw):
+        r = items.get(kw, {}).get("rank")
+        return r is not None and r <= 5
 
-    # 서브 키워드 표 — 발행일순(날짜 컬럼 추가)
+    # 서브 키워드 표 — 발행일순(날짜 컬럼 추가) [메인 앞으로 이동됨]
     if sub_kws:
-        # by_date에서 (날짜, 키워드) 페어 생성 — 발행 순서 그대로
         date_kw_pairs = []
         seen_kw = set()
         for d in sorted(sub_by_date):
             for kw in sub_by_date[d]:
-                if kw in seen_kw or kw not in sub_kws:  # 중복·메인키워드 제외
+                if kw in seen_kw or kw not in sub_kws:
                     continue
                 seen_kw.add(kw)
                 date_kw_pairs.append((d, kw))
@@ -146,7 +144,7 @@ def build(client_id, today=None):
                      f'<td>{rank_chip(rank, extra, with_action=False)}</td><td class="muted">{e(title[:40])}</td></tr>')
         S.append('</tbody></table></div>')
 
-    # 📅 이번 달 발행 키워드 순위 (사용자 지시 2026-07-13: 1~5위만 표시·6위 이하는 '노출없음')
+    # 📅 이번 달 발행 키워드 순위
     if sub_by_date:
         month_dates = sorted([d for d in sub_by_date if d.startswith(cur_month)])
         if month_dates:
@@ -168,8 +166,44 @@ def build(client_id, today=None):
                 S.append('</ul></div>')
             S.append('</div></div>')
 
-    # AI브리핑 인용수 — 헤더만 (수기 입력 영역)
-    S.append('<div class="sec"><h2>🔁 AI브리핑 인용수 — </h2></div>')
+    # 메인 키워드 — 카테고리 지원 (5위 안 체크박스 시각화) [서브 다음으로 이동됨]
+    if main_categories:
+        total = len(main_kws)
+        checked = sum(1 for kw in main_kws if is_top5(kw))
+        S.append(f'<div class="sec"><h2>🎯 메인 키워드 — 총 {total}개 (5위 진입 {checked}개)</h2>')
+        for cat in main_categories:
+            cat_name = cat.get("name", "")
+            groups = cat.get("groups", [])
+            cat_total = sum(len(g) for g in groups)
+            cat_checked = sum(1 for g in groups for kw in g if is_top5(kw))
+            S.append(f'<div class="mk-cat"><div class="mk-cat-title">📂 {e(cat_name)} '
+                     f'<span class="mk-cat-sum">({cat_checked}/{cat_total})</span></div>')
+            S.append('<div class="mk-groups">')
+            for grp in groups:
+                cells = ''
+                for kw in grp:
+                    r = items.get(kw, {}).get("rank")
+                    if r and r <= 5:
+                        # 5위 안 = 순위 숫자
+                        mark = f'<span class="mk-rank-num">{r}위</span>'
+                    else:
+                        # 5위 밖 = 빈 네모박스
+                        mark = '☐'
+                    cells += f'<span class="mk-item">{mark} {e(kw)}</span>'
+                S.append(f'<div class="mk-grow">{cells}</div>')
+            S.append('</div></div>')
+        S.append('</div>')
+    else:
+        # 하위호환: 예전 flat list 렌더링
+        rows = ''
+        for i, kw in enumerate(main_kws, 1):
+            it = items.get(kw, {})
+            rows += (f'<div class="mk-row"><span class="mk-no">{i}.</span> '
+                     f'<span class="mk-kw">{e(kw)}</span> '
+                     f'<span class="mk-rk">{rank_chip(it.get("rank"), it.get("extra_ranks"))}</span></div>')
+        S.append(f'<div class="sec"><h2>🎯 메인 키워드 — ({len(main_kws)}개)</h2>'
+                 f'<div class="main-flow">{rows}</div></div>')
+
 
     # 4가지 지표 일별 표
     if month_days:
@@ -211,35 +245,6 @@ def build(client_id, today=None):
             S.append(f'<tr><td>{e(kw["k"])}</td><td class="r">{kw["p"]}%</td></tr>')
         S.append('</tbody></table></div>')
 
-    # 운영 액션 가이드 (자동 추출)
-    actions = []
-    # 하락 위험: 메인 중 5위 이하 + 다중 노출 없음
-    risky = [kw for kw in main_kws if items.get(kw, {}).get("rank") and items[kw]["rank"] >= 5 and not items[kw].get("extra_ranks")]
-    if risky:
-        actions.append(("🚨 보강 필요 (5위 이하·단일 노출)", risky))
-    # 순위 없음 키워드
-    missing = [kw for kw in main_kws + sub_kws if not items.get(kw, {}).get("rank")]
-    if missing:
-        actions.append(("❌ 순위 없음 (콘텐츠 신규 필요)", missing))
-    # 다중 노출 강세 (3건+)
-    strong = sorted(
-        [(kw, items[kw]["rank"], len(items[kw].get("extra_ranks", []))) for kw in main_kws + sub_kws
-         if items.get(kw, {}).get("rank") and len(items[kw].get("extra_ranks", [])) >= 3],
-        key=lambda x: -x[2]
-    )
-    if strong:
-        actions.append(("💪 다중 노출 강세 (3건+ 동시 노출)",
-                        [f"{kw} ({rank}위 + {n}건)" for kw, rank, n in strong[:10]]))
-
-    if actions:
-        S.append('<div class="sec"><h2>📌 운영 액션 가이드</h2>')
-        for title, items_list in actions:
-            S.append(f'<div class="action-box"><div class="action-ttl">{title}</div><ul>')
-            for kw in items_list:
-                S.append(f'<li>{e(kw)}</li>')
-            S.append('</ul></div>')
-        S.append('</div>')
-
     S.append('</div>')
 
     CSS = """*{box-sizing:border-box;margin:0;padding:0}
@@ -273,6 +278,14 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}
 .main-flow .chip b{font-size:9.5px}
 .main-flow .no-show{font-size:9px;padding:1px 4px}
 .main-flow .chip-none{font-size:9.5px;padding:1px 5px}
+/* 메인 키워드 카테고리형 (5위 진입 체크박스) */
+.mk-cat{margin-bottom:14px;break-inside:avoid;page-break-inside:avoid}
+.mk-cat-title{font-size:12.5px;font-weight:800;color:#0f172a;background:#eef2ff;padding:5px 9px;border-radius:5px;border-left:3px solid #6366f1;margin-bottom:6px}
+.mk-cat-sum{font-size:11px;font-weight:700;color:#4338ca;margin-left:4px}
+.mk-groups{display:flex;flex-direction:column;gap:2px}
+.mk-grow{font-size:11px;line-height:1.6;color:#1c2127;padding:2px 4px;border-bottom:1px dotted #f1f5f9}
+.mk-item{display:inline-block;margin-right:8px;white-space:nowrap}
+.mk-rank-num{display:inline-block;font-size:10px;font-weight:700;color:#dc2626;background:#fee2e2;padding:0 5px;border-radius:3px;margin-right:2px}
 .r{text-align:right}
 .nowrap{white-space:nowrap}
 .muted{color:#94a3b8;font-size:11px}

@@ -67,6 +67,11 @@ function syncNotionToGCal(notionPages, gcalEvents) {
       if (gcalIdProp && gcalById[gcalIdProp]) {
         // 기존 이벤트 업데이트
         event = gcalById[gcalIdProp];
+        // 반복 이벤트는 수정하지 않음 (안전)
+        if (event.isRecurringEvent && event.isRecurringEvent()) {
+          Logger.log(`  ⏭ 반복 이벤트 skip: ${title}`);
+          continue;
+        }
         event.setTitle(title);
         if (date.start && date.end) {
           event.setTime(date.start, date.end);
@@ -74,8 +79,12 @@ function syncNotionToGCal(notionPages, gcalEvents) {
           event.setAllDayDate(date.start);
         }
         Logger.log(`  ✏ Notion→GCal 수정: ${title}`);
+      } else if (gcalIdProp) {
+        // gcal id 있는데 매칭 실패 → 안전을 위해 skip (복제 방지)
+        Logger.log(`  ⚠ ID 매칭 실패 skip: ${title} (gcal_id=${gcalIdProp.substring(0, 20)}...)`);
+        continue;
       } else {
-        // 새 이벤트 생성
+        // 새 이벤트 생성 (노션에서 새로 만든 카드만)
         if (date.start && date.end) {
           event = calendar.createEvent(title, date.start, date.end);
         } else {
@@ -103,6 +112,9 @@ function syncGCalToNotion(gcalEvents, notionPages) {
   });
 
   for (const ev of gcalEvents) {
+    // 반복 이벤트는 sync 대상에서 제외 (ID 매칭 이슈로 복제 위험)
+    if (ev.isRecurringEvent && ev.isRecurringEvent()) continue;
+
     const gid = ev.getId();
     const title = ev.getTitle();
     const start = ev.getStartTime();

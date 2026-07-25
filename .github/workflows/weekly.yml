@@ -6,39 +6,89 @@ on:
     - cron: '0 20 * * 0'
   workflow_dispatch:
 
+env:
+  PY: '3.11'
+
 jobs:
-  weekly-reports:
+  # ========== 1) 실측 (4 병렬) ==========
+  measure:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: A
+            blogs: "chanwoo0919 kbtax0503"                  # 마실 + 다원
+          - group: B
+            blogs: "cdo2795 cowper7710"                     # 건테리어 + 카우퍼
+          - group: C
+            blogs: "cdo27951 kkomkkomcleaning"              # 건테리어주택 + 꼼꼼
+          - group: D
+            blogs: "cdo27953 cdo27952 sh33391 shingonggandesign02 leverager_solution"  # 메카+건테리어스+서휘+신공간+레솔
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+          python-version: ${{ env.PY }}
           cache: 'pip'
-
-      - name: Install dependencies
+      - name: Install deps
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           playwright install --with-deps chromium
-          # PDF 생성용 headless chromium 설치
+      - name: RSS ingest (all channels)
+        if: matrix.group == 'A'
+        run: python scripts/naver_rss_ingest.py
+      - name: Measure ranks (${{ matrix.group }})
+        run: |
+          for bid in ${{ matrix.blogs }}; do
+            echo "▶ $bid"
+            python scripts/measure_playwright.py "$bid"
+          done
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: rank-${{ matrix.group }}
+          path: data/history.json
+          retention-days: 3
+
+  # ========== 2) 병합 + 리포트 + 노션 ==========
+  report:
+    needs: measure
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY }}
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
           sudo apt-get update -qq
           sudo apt-get install -y chromium-browser wkhtmltopdf || sudo apt-get install -y chromium
-
-      - name: Generate PDFs for all companies
+      - name: Download all measure artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Merge results
+        run: python scripts/merge_measure_results.py
+      - name: Commit updated history.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          git diff --staged --quiet || git commit -m "chore: weekly measure $(date +%Y-%m-%d)"
+          git push
+      - name: Generate PDFs
         run: python scripts/weekly_reports.py
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
-
       - name: Upload PDFs to Release
         uses: softprops/action-gh-release@v2
         with:
@@ -46,11 +96,9 @@ jobs:
           name: 주간 윤팀장 보고서 ${{ github.run_id }}
           files: reports/*.pdf
           token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Post Notion summary page
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
           REPO: ${{ github.repository }}
           RUN_NUM: ${{ github.run_id }}
         run: python scripts/post_notion_summary.py
