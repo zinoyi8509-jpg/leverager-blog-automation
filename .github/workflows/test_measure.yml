@@ -1,0 +1,72 @@
+name: Test Measure (원샷 - 특정 업체)
+
+on:
+  workflow_dispatch:
+    inputs:
+      blog_id:
+        description: '테스트할 블로그 ID (기본: sh33391 서휘)'
+        default: 'sh33391'
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y chromium-browser wkhtmltopdf || sudo apt-get install -y chromium
+      - name: RSS ingest (${{ inputs.blog_id }})
+        run: python scripts/naver_rss_ingest.py ${{ inputs.blog_id }}
+      - name: Measure ranks
+        run: python scripts/measure_playwright.py ${{ inputs.blog_id }}
+      - name: Commit updated history.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          git diff --staged --quiet || git commit -m "chore: test measure ${{ inputs.blog_id }}"
+          git push
+      - name: Generate report for the blog
+        run: |
+          # 블로그 ID → 회사 키 매핑
+          case "${{ inputs.blog_id }}" in
+            chanwoo0919) client=masil ;;
+            cowper7710) client=cowper ;;
+            cdo27953) client=mecca ;;
+            kbtax0503) client=dawon ;;
+            sh33391) client=seohwi ;;
+            shingonggandesign02) client=shingonggan ;;
+            cdo2795) client=gunterior ;;
+            cdo27952) client=gunteriors ;;
+            cdo27951) client=gunterior_house ;;
+            leverager_solution) client=leso ;;
+            kkomkkomcleaning) client=kkomkkom ;;
+            *) client="" ;;
+          esac
+          if [ -n "$client" ]; then
+            python scripts/internal_report.py "$client"
+            mkdir -p reports
+            cp dashboards/reports/internal/*.pdf reports/ 2>/dev/null || cp -r reports_out reports 2>/dev/null || true
+            ls -la reports/ || echo "no reports dir"
+          fi
+      - name: Upload PDF as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ inputs.blog_id }}
+          path: |
+            reports/**/*.pdf
+            dashboards/reports/**/*.pdf
+          if-no-files-found: warn
