@@ -2,8 +2,8 @@ name: Weekly 윤팀장 Report
 
 on:
   schedule:
-    # 매주 월요일 KST 09:00 = 일요일 UTC 00:00
-    - cron: '0 0 * * 1'
+    # 매주 월요일 KST 05:00 = 일요일 UTC 20:00 (사용자 09시 출근 전 완료용)
+    - cron: '0 20 * * 0'
   workflow_dispatch:
 
 jobs:
