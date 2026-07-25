@@ -41,7 +41,6 @@ jobs:
           git push
       - name: Generate report for the blog
         run: |
-          # 블로그 ID → 회사 키 매핑
           case "${{ inputs.blog_id }}" in
             chanwoo0919) client=masil ;;
             cowper7710) client=cowper ;;
@@ -54,19 +53,14 @@ jobs:
             cdo27951) client=gunterior_house ;;
             leverager_solution) client=leso ;;
             kkomkkomcleaning) client=kkomkkom ;;
-            *) client="" ;;
+            *) echo "❌ unknown blog_id"; exit 1 ;;
           esac
-          if [ -n "$client" ]; then
-            python scripts/internal_report.py "$client"
-            mkdir -p reports
-            cp dashboards/reports/internal/*.pdf reports/ 2>/dev/null || cp -r reports_out reports 2>/dev/null || true
-            ls -la reports/ || echo "no reports dir"
-          fi
+          python scripts/internal_report.py "$client"
+          echo "=== PDF 확인 ==="
+          ls -lh reports/internal/*.pdf || echo "no pdf"
       - name: Upload PDF as artifact
         uses: actions/upload-artifact@v4
         with:
           name: test-report-${{ inputs.blog_id }}
-          path: |
-            reports/**/*.pdf
-            dashboards/reports/**/*.pdf
-          if-no-files-found: warn
+          path: reports/internal/*.pdf
+          if-no-files-found: error

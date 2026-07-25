@@ -16,7 +16,16 @@ from collections import defaultdict
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 HIST = os.path.join(ROOT, "data", "history.json")
 ODIR = os.path.join(ROOT, "reports", "internal")
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+import shutil as _shutil
+def _find_chrome():
+    mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if os.path.exists(mac): return mac
+    for cmd in ("google-chrome", "chromium-browser", "chromium", "chrome"):
+        p = _shutil.which(cmd)
+        if p: return p
+    return None
+CHROME = _find_chrome()
 e = lambda s: html.escape(str(s), quote=True)
 
 CLIENTS = {
