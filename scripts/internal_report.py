@@ -96,6 +96,21 @@ def build(client_id, today=None):
     rank_date = latest[0] if latest else "(미측정)"
     items = {it["kw"]: it for it in rank_data.get("items", [])}
 
+    # 측정 시각 KST 변환 (UTC → KST +9시간)
+    from datetime import timezone, timedelta
+    measured_at = rank_data.get("measured_at", "")
+    if measured_at:
+        try:
+            mdt = datetime.datetime.fromisoformat(measured_at)
+            if mdt.tzinfo is None:
+                mdt = mdt.replace(tzinfo=timezone.utc)
+            kst = mdt.astimezone(timezone(timedelta(hours=9)))
+            rank_display = kst.strftime("%Y-%m-%d %H:%M KST")
+        except Exception:
+            rank_display = rank_date
+    else:
+        rank_display = rank_date
+
     daily = blog.get("daily", {})
     month_days = sorted([d for d in daily if d.startswith(cur_month)])
 
@@ -110,7 +125,10 @@ def build(client_id, today=None):
     S.append(f'<div class="cover">'
              f'<div class="brand">윤팀장 운영 점검 보고서</div>'
              f'<div class="ttl">{e(name)} ({nv})</div>'
-             f'<div class="meta">측정일자 {e(rank_date)} · 보고서 작성 {today}</div></div>')
+             f'<div class="meta">📡 실측 시각: <b>{e(rank_display)}</b> · 보고서 작성: {today}</div>'
+             f'<div class="meta" style="opacity:.85;font-size:11px;margin-top:4px">'
+             f'⚠ 네이버 순위는 실시간 변동됩니다. 조회 시점에 실제 순위와 차이 있을 수 있음.</div>'
+             f'</div>')
 
     # KPI
     main_in = sum(1 for kw in main_kws if items.get(kw, {}).get("rank"))
