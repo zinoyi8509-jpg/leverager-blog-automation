@@ -58,7 +58,7 @@ def parse_cards(page, blog_id):
     () => {{
       const links = Array.from(document.querySelectorAll('a'));
       const p = links
-        .filter(a => /blog\\.naver\\.com\\/[a-zA-Z0-9_]+\\/\\d+/.test(a.href) ||
+        .filter(a => /blog\\.naver\\.com\\/[a-zA-Z0-9_-]+\\/\\d+/.test(a.href) ||
                      /\\.tistory\\.com\\/\\d+/.test(a.href))
         .map(a => ({{href: a.href.split('?')[0], text: (a.textContent || '').trim().slice(0, 100)}}));
       const seen = new Set();
@@ -67,7 +67,7 @@ def parse_cards(page, blog_id):
         seen.add(l.href); return true;
       }}).slice(0, {TOP_N});
       return cards.map((l, i) => {{
-        const nm = l.href.match(/blog\\.naver\\.com\\/([a-zA-Z0-9_]+)\\/(\\d+)/);
+        const nm = l.href.match(/blog\\.naver\\.com\\/([a-zA-Z0-9_-]+)\\/(\\d+)/);
         const tm = l.href.match(/([a-zA-Z0-9_-]+)\\.tistory\\.com\\/(\\d+)/);
         return {{rank: i+1, id: nm ? nm[1] : (tm ? tm[1] : null), text: l.text}};
       }});
