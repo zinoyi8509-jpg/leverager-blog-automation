@@ -28,6 +28,9 @@ jobs:
           playwright install --with-deps chromium
           sudo apt-get update -qq
           sudo apt-get install -y chromium-browser wkhtmltopdf || sudo apt-get install -y chromium
+          # 한글 폰트 설치 (Noto Sans CJK) — Chromium PDF 한글 렌더링
+          sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra
+          fc-cache -f -v
       - name: RSS ingest (${{ inputs.blog_id }})
         run: python scripts/naver_rss_ingest.py ${{ inputs.blog_id }}
       - name: Measure ranks
