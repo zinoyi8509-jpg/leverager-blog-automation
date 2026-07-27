@@ -1,9 +1,7 @@
 name: Weekly 윤팀장 Report
 
 on:
-  schedule:
-    # 매주 월요일 KST 05:00 = 일요일 UTC 20:00 (사용자 09시 출근 전 완료용)
-    - cron: '0 20 * * 0'
+  # cron 비활성화: 로컬 launchd(한국 IP 실측)로 이전됨. 수동 실행만 유지.
   workflow_dispatch:
 
 env:
