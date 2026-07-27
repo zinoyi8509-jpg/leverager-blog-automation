@@ -257,7 +257,7 @@ def build(client_id, today=None):
     S.append('</div>')
 
     CSS = """*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#1c2127;background:#fff;line-height:1.5}
+body{font-family:-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans CJK KR","Noto Sans KR","Nanum Gothic",sans-serif;color:#1c2127;background:#fff;line-height:1.5}
 .wrap{max-width:800px;margin:0 auto;padding:0 28px 32px}
 .cover{background:linear-gradient(135deg,#0f172a,#334155);color:#fff;margin:0 -28px 18px;padding:26px 28px}
 .cover .brand{font-size:12px;opacity:.75;letter-spacing:1px;font-weight:700}
