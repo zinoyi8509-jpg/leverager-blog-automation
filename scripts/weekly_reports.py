@@ -37,6 +37,7 @@ KO_TO_EN = {
     "건테리어주택": "gunterior_house",
     "레솔":         "leso",
     "꼼꼼":         "kkomkkom",
+    "꼼꼼종합클린": "kkomkkom",
 }
 
 for client in CLIENTS:
@@ -50,9 +51,10 @@ for client in CLIENTS:
             print(f"  ⚠ 실패:\n  stdout: {r.stdout[-300:]}\n  stderr: {r.stderr[-500:]}")
             continue
         # PDF를 reports/ 로 복사 (한글 → 영문 rename)
+        # 긴 접두어부터 매칭 (꼼꼼종합클린 → 꼼꼼 순으로 먼저 시도)
         for pdf in ROOT.glob("**/reports/internal/*_윤팀장_운영보고서_*.pdf"):
             new_name = pdf.name
-            for ko, en in KO_TO_EN.items():
+            for ko, en in sorted(KO_TO_EN.items(), key=lambda x: -len(x[0])):
                 new_name = new_name.replace(f"{ko}_윤팀장_운영보고서_", f"{en}_weekly_report_")
             shutil.copy(pdf, REPORTS / new_name)
             print(f"  ✅ {new_name}")
