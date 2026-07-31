@@ -8,9 +8,23 @@
   python3 scripts/measure_playwright.py <blog_id> [<blog_id> ...]
   python3 scripts/measure_playwright.py chanwoo0919 kbtax0503
 """
-import sys, os, json, time, random
+import sys, os, json, time, random, fcntl
 from urllib.parse import quote_plus
 from playwright.sync_api import sync_playwright
+
+
+def save_atomic(new_bid_data, hist_path, bid, today):
+    """병렬 안전 저장: 파일락 → 재read → 병합 → write."""
+    with open(hist_path, "r+", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.seek(0)
+            current = json.load(f)
+            current["blogs"].setdefault(bid, {}).setdefault("keyword_rank", {})[today] = new_bid_data
+            f.seek(0); f.truncate()
+            json.dump(current, f, ensure_ascii=False, indent=2)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HIST = os.path.join(ROOT, "data", "history.json")
@@ -137,14 +151,13 @@ def main():
     for bid in targets:
         results = measure_blog(bid, h)
         if not results: continue
-        b = h["blogs"][bid]
-        b.setdefault("keyword_rank", {})[today] = {
+        rank_data = {
             "source": "playwright_실측",
             "items": results,
             "measured_at": datetime.datetime.now().isoformat(),
         }
-        # 매 블로그 완료 시 저장 (job 중단되어도 부분 저장)
-        json.dump(h, open(HIST, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        # 병렬 안전 저장 (파일락)
+        save_atomic(rank_data, HIST, bid, today)
         hits5 = sum(1 for r in results if r.get("rank") and r["rank"] <= 5)
         print(f"✅ {bid} 완료: {len(results)}개 · 5위 안 {hits5}개 · 저장 완료")
 
